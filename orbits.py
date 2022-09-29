@@ -11,38 +11,46 @@ class Transducer(object):
         state = self.start
         new_word = []
         for c in word:
-            state, o = self.transitions[(state, c)]
+            state, o = self.transitions[(state, int(c))]
             new_word.append(o)
-        return new_word
+        return ''.join([str(x) for x in new_word])
 
     def orbits(self, n):
         if n == 0:
-            return [[]]
+            return frozenset([frozenset([''])])
         else:
-            out = []
-            for root in self.orbits(n-1):
-                rootl = root + [0]
-                rootr = root + [1]
-                word = rootl[::1]
-                done = False
-                while not done:
-                    done = True
+            out = set()
+            for orbit in self.orbits(n-1):
+                root = min(orbit)
+                rootl = root + '0'
+                rootr = root + '1'
+                word = rootl
+                new_orbit = set()
+                while word not in new_orbit:
+                    new_orbit.add(word)
                     word = self.step(word)
-                    if word == rootl:
-                        out.append(rootl)
-                        out.append(rootr)
-                    elif word == rootr:
-                        out.append(rootl)
-                    else:
-                        done = False
-            return out
+                out.add(frozenset(new_orbit))
+                if rootr in new_orbit:
+                    continue
+                word = rootr
+                new_orbit = set()
+                while word not in new_orbit:
+                    new_orbit.add(word)
+                    word = self.step(word)
+                out.add(frozenset(new_orbit))
+            return frozenset(out)
 
     def orbit_tree(self, n):
         dot = graphviz.Digraph()
-        dot.node('e', '')
+        dot.node('e', '', root='true')
         for i in range(1, n+1):
-            for root in self.orbits(i):
-                root = ''.join([str(d) for d in root])
+            for orbit in self.orbits(i):
+                root = min(orbit)
+                #print(root)
+                #word = self.step(root)
+                #while word != root:
+                #    print('\t', word)
+                #    word = self.step(word)
                 dot.node(root, '')
                 if i == 1:
                     dot.edge('e', root, label=' ' + root[-1])
@@ -126,7 +134,7 @@ example3 = Transducer(0, {
     (2, 1): (1, 1),
 })
 
-example4 = Transducer('B', {
+example4 = Transducer('C', {
     ('A', 0): ('B', 1),
     ('A', 1): ('C', 0),
     ('B', 0): ('A', 1),
@@ -148,12 +156,15 @@ def classify(size, depth):
     classes = {}
     exemplars = {}
     for i, x in enumerate(all_transducers(size)):
-        fingerprint = str(x.orbits(depth))
+        if i in (62, 78):
+            print(i, x.transitions)
+        fingerprint = x.orbits(depth)
         if fingerprint in classes:
             classes[fingerprint].append((i, x))
-            exemplars[i] = classes[fingerprint][0][0]
         else:
             classes[fingerprint] = [(i, x)]
+        exemplars[i] = classes[fingerprint][0][0]
+    print('! ',  i+1)
     return classes, exemplars
 
 if __name__ == '__main__':
@@ -161,15 +172,14 @@ if __name__ == '__main__':
     """
     size = 3
     for i, x in enumerate(all_transducers(size)):
-        if i in (797, 3349):
+        if i in (62, 78):
             print(x.transitions)
-            x.orbit_tree(12).render('nasty_' + str(size) + '_' + str(i) + '.dot',
-                                    engine='dot',
+            x.orbit_tree(12).render('nasty2_' + str(size) + '_' + str(i) + '.dot',
+                                    engine='twopi',
                                     format='png',
                                     view=False)
 
     sys.exit(0)
-    """
 
     size = int(sys.argv[1])
     exemplars = None
@@ -178,7 +188,6 @@ if __name__ == '__main__':
         classes, exemplars = classify(size, depth)
         if old_exemplars:
             for k in exemplars:
-                break
                 if exemplars[k] != old_exemplars[k]:
                     print(depth, k, exemplars[k], old_exemplars[k])
         xs = [len(classes[cls]) for cls in classes]
@@ -186,7 +195,6 @@ if __name__ == '__main__':
         print(depth, len(classes), sorted(xs2.items()))
 
 
-    """
     word = [0] * 5
     for i in range(32):
         print(word)
@@ -195,7 +203,7 @@ if __name__ == '__main__':
         print(example.orbits(i))
     """
 
-    # example4.orbit_tree(12).render('example', engine='dot', view=True)
+    example4.orbit_tree(12).render('example', engine='twopi', view=True)
     """
     seen = set()
     size = 3
