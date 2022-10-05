@@ -1,2 +1,7 @@
 *.dot
 *.dot.png
+
+
+# Added by cargo
+
+/target
