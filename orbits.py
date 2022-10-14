@@ -1,6 +1,7 @@
 from typing import Union
 import graphviz
 import itertools
+import pathlib
 import sys
 from datetime import datetime
 
@@ -64,7 +65,7 @@ class Transducer(object):
 
     def orbit_tree(self, n : int):
         dot = graphviz.Digraph()
-        dot.node('e', '', root='true')
+        dot.node('e', '0', root='true')
         for i in range(1, n+1):
             for orbit in self.orbits(i):
                 root = min(orbit)
@@ -133,12 +134,12 @@ def all_transducers(size: int):
         t_dict = {}
         for i, (state, sym) in enumerate(itertools.product(states, range(2))):
             t_dict[(state, sym)] = (t[0][i], (t[1][i//2] + sym) % 2)
-        if has_unreachable_state(t_dict):
-            continue
-        if redundant_graph_permutation(t):
-            continue
-        if redundant_inversion(t_dict):
-            continue
+        #if has_unreachable_state(t_dict):
+        #    continue
+        #if redundant_graph_permutation(t):
+        #    continue
+        #if redundant_inversion(t_dict):
+        #    continue
         yield Transducer(start, t_dict)
 
 example = Transducer(0, {
@@ -190,23 +191,24 @@ example5 = Transducer('C', {
     ('C', 1): ('C', 1)
 })
 
-def classify(size: int, depth: int) -> tuple[dict[int, list[tuple[int, Transducer]]], dict[int, int]]:
+def classify(size: int, depth: int, debug = False) -> tuple[dict[int, list[tuple[int, Transducer]]], dict[int, int]]:
     if depth == 0:
         out = list(enumerate(all_transducers(size)))
         return {0: out}, {x: 0 for x in (x[0] for x in out)}
     classes: dict[int, list[tuple[int, Transducer]]] = {}
     exemplars: dict[int, int] = {}
-    old_classes, old_exemplars = classify(size, depth=depth-1)
+    old_classes, old_exemplars = classify(size, depth=depth-1, debug=debug)
     a = datetime.now()
     for i, x in enumerate(all_transducers(size)):
         b = datetime.now()
         interval = (b-a) * (len(old_exemplars) / max(1, i) - 1)
-        print('testing {}/{}, {:02d}:{:02d}:{:02d} remaining'.format(
-            i, len(old_exemplars),
-            int(interval.total_seconds() / 3600),
-            int((interval.total_seconds() % 3600) / 60),
-            int(interval.total_seconds() % 60)
-        ), end = '\r')
+        if debug:
+            print('testing {}/{}, {:02d}:{:02d}:{:02d} remaining'.format(
+                i, len(old_exemplars),
+                int(interval.total_seconds() / 3600),
+                int((interval.total_seconds() % 3600) / 60),
+                int(interval.total_seconds() % 60)
+            ), end = '\r')
         if old_exemplars[i] == i:
             classes[i] = [(i, x)]
             exemplars[i] = i
@@ -218,80 +220,56 @@ def classify(size: int, depth: int) -> tuple[dict[int, list[tuple[int, Transduce
                 break
             if exemplars[j] != j:
                 continue
-            # print('testing {}/{} against {}/{}...'.format(
-            #     i, len(old_exemplars), j, i), end = '\r')
             if y.orbit_compare(x, depth):
                 classes[j].append((i, x))
                 exemplars[i] = j
                 break
     xs = [len(classes[cls]) for cls in classes]
     xs2 = {x: xs.count(x) for x in xs}
-    print(depth, len(classes), sorted(xs2.items()), flush=True)
+    if debug:
+        print(depth, len(classes), sorted(xs2.items()), flush=True)
     return classes, exemplars
+
+def coin_images():
+    size = 3
+    classes, exemplars = classify(size, 6)
+    for (i, machines) in classes.items():
+        depth = 6
+        for j in range(6, 10):
+            x = machines[0][1].orbits(j)
+            if len(x) < 100:
+                depth = j
+            else:
+                break
+        machines[0][1].orbit_tree(depth).render('images/tree_{}_{}.gv'.format(size, i), engine='dot', format='png', view=False)
+        pathlib.Path('images/{}_{}'.format(size, i)).mkdir(exist_ok=True)
+        for (j, m) in machines:
+            m.machine_graph().render('images/{size}_{i}/machine_{size}_{i}_{j}.gv'.format(size=size, i=i, j=j), engine='dot', format='png', view=False)
+        print(machines[0])
 
 if __name__ == '__main__':
 
-    """
-    size = 3
-    for i, x in enumerate(all_transducers(size)):
-        if i in (62, 78):
-            print(x.transitions)
-            x.orbit_tree(12).render('nasty2_' + str(size) + '_' + str(i) + '.dot',
-                                    engine='twopi',
-                                    format='png',
-                                    view=False)
+    #        x.orbit_tree(12).render('nasty2_' + str(size) + '_' + str(i) + '.dot',
+    #                                engine='twopi',
+    #                                format='png',
+    #                                view=False)
 
+    size = 3
+    # target = int(sys.argv[1])
+    depth = int(sys.argv[1])
+    # for (i, m) in enumerate(all_transducers(3)):
+    #     if i == target:
+    #         m.orbit_tree(depth).render('debug/{}_{}.gv'.format(size, target), engine='dot', format='png', view=True)
+    #         last = 1
+    classes, exemplars = classify(size, depth, debug=False)
+    print('a', len(classes))
     sys.exit(0)
-    """
-
-    # classes, exemplars = classify(3, 8)
-    # for i, c in enumerate(classes):
-    #     print(i, len(classes[c]))
-    #     if i == 1:
-    #         classes[c][0][1].orbit_tree(8).render('class_' + str(i) + '.gz', format='png',
-    #                                 view=False)
-    #         for j, m in classes[c]:
-    #             m.machine_graph().render('example_' + str(j) + '_class_' +
-    #                                      str(i) + '.gz', format='png',
-    #                                      view=False)
-
-    # bigcycle = None
-    # bigcyclers = None
-    # for c in classes:
-    #     if len(c) == 1:
-    #         assert bigcycle is None
-    #         bigcyclers = classes[c]
-    # assert bigcyclers is not None
-    # for i, machine in bigcyclers:
-    #     machine.machine_graph().render('bigcycler_' + str(i) + '.gz',
-    #                                    format='png', view=False)
-
-    size = int(sys.argv[1])
-    depth = 100
-    classify(size, 100)
-
-    #example4.orbit_tree(12).render('example3', engine='dot', view=True)
-    """
-    word = [0] * 5
-    for i in range(32):
-        print(word)
-        word = example.step(word)
-    for i in range(10):
-        print(example.orbits(i))
-
-    seen = set()
-    size = 3
-    i = 0
-    for i, x in enumerate(all_transducers(size)):
-        print(i)
-        fingerprint = str(x.orbits(8))
-        if fingerprint in seen:
-            continue
-        seen.add(fingerprint)
-        print(i, len(seen), x.transitions)
-        # x.orbit_tree(8).render('example' + str(size) + '_' + str(i) + '.dot',
-        #                         engine='dot',
-        #                         format='png',
-        #                         view=False)
-    print(i+1)
-    """
+    for (i, machines) in classes.items():
+        a = machines[0][1].orbits(6)
+        b = machines[0][1].orbits(10)
+        c = machines[0][1].orbits(9)
+        d = machines[0][1].orbits(11)
+        if len(a) > 1:
+            assert len(c) > 1
+        if len(c) == len(d):
+            print(i)

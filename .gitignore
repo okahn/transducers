@@ -1,6 +1,7 @@
 *.dot
 *.dot.png
-
+*.gv
+*.gv.png
 
 # Added by cargo
 

@@ -1,197 +1,207 @@
-use std::marker::PhantomData;
-use std::fmt;
+use num::Integer;
 
-pub trait Cycle<T> {
-    type Item : Eq + Clone + fmt::Debug;
-    fn new(width: T, height: Self::Item) -> Self;
-    fn next(&mut self) -> Vec<Self::Item>;
-    fn peek(&self) -> Vec<Self::Item>;
-    fn root(&self) -> Vec<Self::Item>;
-    fn reset(&mut self);
+// TODO Rename this module.
+
+/// An iterator representing a cycle.
+pub trait Cycle<T: Clone>: Iterator<Item = T> {
+    /// Creates a cycle.
+    ///
+    /// `max` represents the kind of structure to be cycled through.
+    /// If `limit` is true, the iteration will end after one complete cycle rather than repeat.
+    fn new(max: T, limit: bool) -> Self;
 }
 
-
-#[derive(Debug)]
-pub struct ICycle<T: Copy + num::Integer> {
-    height: T,
-    state: Vec<T>
+/// An iterator cycling through integers modulo `max`.
+pub struct UCycle<T: Integer + Copy> {
+    // TODO decide: limit to unsigned types?
+    max: T,
+    state: T,
+    limit: bool,
+    done: bool,
 }
 
+impl<T: Integer + Copy> Cycle<T> for UCycle<T> {
+    fn new(max: T, limit: bool) -> Self {
+        UCycle {
+            max,
+            state: T::zero(),
+            limit,
+            done: false,
+        }
+    }
+}
 
-impl<T: Copy + num::Integer + fmt::Debug> Cycle<usize> for ICycle<T> {
+impl<T: Integer + Copy> Iterator for UCycle<T> {
     type Item = T;
 
-    fn new(width : usize, height : T) -> ICycle<T> {
-        ICycle{height, state: vec![T::zero(); width]}
-    }
-
-    fn next(&mut self) -> Vec<T> {
-        let out = self.state.clone();
-        for i in (0..self.state.len()).rev() {
-            if self.state[i] == self.height - T::one() {
-                self.state[i] = T::zero()
-            } else {
-                self.state[i] = self.state[i] + T::one();
-                break;
-            }
-        }
-        return out;
-    }
-
-    fn peek(&self) -> Vec<T> {
-        self.state.clone()
-    }
-
-    fn root(&self) -> Vec<T> {
-        vec![T::zero(); self.state.len()]
-    }
-
-    fn reset(&mut self) {
-        for i in 0..self.state.len() {
-            self.state[i] = T::zero();
-        }
-    }
-}
-
-
-#[derive(Debug)]
-pub struct VCycle<S, T: Cycle<S>> {
-    phantom: PhantomData<S>,
-    state: Vec<T>,
-}
-
-
-impl<S: Clone, T: Cycle<S> + fmt::Debug> Cycle<Vec<S>> for VCycle<S, T> {
-
-    type Item = Vec<T::Item>;
-
-    fn new(width: Vec<S>, height: Self::Item) -> Self {
-        let mut state = Vec::new();
-        for i in 0..width.len() {
-            state.push(T::new(width[i].clone(), height[i].clone()));
-        }
-        VCycle{
-            state,
-            phantom: PhantomData
-        }
-    }
-
-    fn next(&mut self) -> Vec<Self::Item> {
-        let out = self.peek();
-        for i in (0..self.state.len()).rev() {
-            self.state[i].next();
-            let mut done = false;
-            for (a, b) in self.state[i].peek().iter().zip(self.state[i].root()) {
-                if *a != b {
-                    done = true;
-                    break;
-                }
-            }
-            if done {
-                break;
-            }
-        }
-        return out;
-    }
-
-    fn peek(&self) -> Vec<Self::Item> {
-        self.state.iter().map(|x| x.peek().clone()).collect()
-    }
-
-    fn root(&self) -> Vec<Self::Item> {
-        self.state.iter().map(|x| x.root()).collect()
-    }
-
-    fn reset(&mut self) {
-        for i in 0..self.state.len() {
-            self.state[i].reset();
-        }
-    }
-}
-
-
-#[derive(Debug)]
-pub struct AllWords<S, T: Cycle<S>> {
-    internal: T,
-    phantom: PhantomData<S>,
-    done: bool
-}
-
-
-impl<S, T: Cycle<S>> AllWords<S, T> {
-    pub fn new(width: S, height: T::Item) -> AllWords<S, T> {
-        AllWords{
-            internal: T::new(width, height),
-            phantom: PhantomData,
-            done: false
-        }
-    }
-
-    /* fn reset(&mut self) {
-        self.internal.reset();
-        self.done = false;
-    } */
-}
-
-
-impl<S, T: Cycle<S>> Iterator for AllWords<S, T> {
-    type Item = Vec<T::Item>;
-
-    fn next(&mut self) -> Option<Vec<T::Item>> {
+    fn next(&mut self) -> Option<T> {
         if self.done {
             return None;
         }
-        let next = self.internal.next();
-        self.done = true;
-        for (a, b) in self.internal.peek().iter().zip(&self.internal.root()) {
-            if a != b {
-                self.done = false;
-                break;
-            }
-        }
-        return Some(next);
-    }
-}
-
-
-#[derive(Debug)]
-pub struct Combination<S, T: Cycle<S>, U, V: Cycle<U>> {
-    internal: (T, V),
-    phantom_l: PhantomData<S>,
-    phantom_r: PhantomData<U>,
-    done: bool
-}
-
-
-impl<S, T:Cycle<S>, U, V:Cycle<U>> Combination<S, T, U, V> {
-    pub fn new(width: (S, U), height: (T::Item, V::Item)) -> Combination<S, T, U, V> {
-        Combination{
-            internal: (T::new(width.0, height.0),
-                       V::new(width.1, height.1)),
-            phantom_l: PhantomData,
-            phantom_r: PhantomData,
-            done: false
-        }
-    }
-}
-
-
-impl<S, T:Cycle<S>, U, V:Cycle<U>> Iterator for Combination<S, T, U, V> {
-    type Item = (Vec<T::Item>, Vec<V::Item>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.done {
-            return None;
-        }
-        let out = (self.internal.0.peek(),
-                   self.internal.1.peek());
-        self.internal.1.next();
-        if self.internal.1.peek() == self.internal.1.root() {
-            self.internal.0.next();
-            if self.internal.0.peek() == self.internal.0.root() {
-                self.done = true
-            }
+        let out = self.state;
+        self.state = self.state + T::one();
+        if self.state == self.max {
+            self.state = T::zero();
+            self.done = self.limit;
         }
         return Some(out);
+    }
+}
+
+/// An iterator cycling through the chained Cartesian product of identically-typed cycles,
+/// represented as a vector.
+pub struct VCycle<U: Clone, T: Cycle<U>> {
+    max: Vec<U>,
+    state: Vec<T>,
+    prev: Vec<U>,
+    limit: bool,
+    done: bool,
+}
+
+impl<U: Clone, T: Cycle<U>> Cycle<Vec<U>> for VCycle<U, T> {
+    fn new(max: Vec<U>, limit: bool) -> Self {
+        let mut state: Vec<T> = max.iter().map(|x| T::new(x.clone(), true)).collect();
+        let mut prev: Vec<U> = Vec::new();
+        for i in 0..state.len() {
+            prev.push(state[i].next().unwrap().clone());
+        }
+        return VCycle {
+            max,
+            state,
+            prev,
+            limit,
+            done: false,
+        };
+    }
+}
+
+impl<U: Clone, T: Cycle<U>> Iterator for VCycle<U, T> {
+    type Item = Vec<U>;
+
+    fn next(&mut self) -> Option<Vec<U>> {
+        if self.done {
+            return None;
+        } else {
+            let out = self.prev.clone();
+            let mut overflow = true;
+            for i in (0..self.state.len()).rev() {
+                match self.state[i].next() {
+                    Some(x) => {
+                        overflow = false;
+                        self.prev[i] = x.clone();
+                        break;
+                    }
+                    None => {
+                        self.state[i] = T::new(self.max[i].clone(), true);
+                        self.prev[i] = self.state[i].next().unwrap();
+                    }
+                }
+            }
+            self.done = overflow && self.limit;
+            return Some(out);
+        }
+    }
+}
+
+/// An iterator cycling through the Cartesian product of two cycles,
+/// represented as a tuple.
+pub struct TCycle<U: Clone, V: Clone, S: Cycle<U>, T: Cycle<V>> {
+    max: (U, V),
+    state: (S, T),
+    prev: (U, V),
+    limit: bool,
+    done: bool,
+}
+
+impl<U: Clone, V: Clone, S: Cycle<U>, T: Cycle<V>> Cycle<(U, V)> for TCycle<U, V, S, T> {
+    fn new(max: (U, V), limit: bool) -> Self {
+        let mut state: (S, T) = (S::new(max.0.clone(), true), T::new(max.1.clone(), true));
+        let prev: (U, V) = (
+            state.0.next().unwrap().clone(),
+            state.1.next().unwrap().clone(),
+        );
+        return TCycle {
+            max,
+            state,
+            prev,
+            limit,
+            done: false,
+        };
+    }
+}
+
+impl<U: Clone, V: Clone, S: Cycle<U>, T: Cycle<V>> Iterator for TCycle<U, V, S, T> {
+    type Item = (U, V);
+
+    fn next(&mut self) -> Option<(U, V)> {
+        if self.done {
+            return None;
+        } else {
+            let out = self.prev.clone();
+            let mut overflow = true;
+            match self.state.1.next() {
+                Some(x) => {
+                    overflow = false;
+                    self.prev.1 = x.clone();
+                }
+                None => {
+                    self.state.1 = T::new(self.max.1.clone(), true);
+                    self.prev.1 = self.state.1.next().unwrap();
+                    match self.state.0.next() {
+                        Some(x) => {
+                            overflow = false;
+                            self.prev.0 = x.clone();
+                        }
+                        None => {
+                            self.state.0 = S::new(self.max.0.clone(), true);
+                            self.prev.0 = self.state.0.next().unwrap();
+                        }
+                    }
+                }
+            }
+            self.done = overflow && self.limit;
+            return Some(out);
+        }
+    }
+}
+
+/// An iterator through all permutations of the numbers from 0 to `width-1` in
+/// shortlex order.
+pub struct Permutation {
+    state: usize,
+    width: usize,
+}
+
+fn factorial(n: usize) -> usize {
+    let mut res = 1;
+    for i in 2..n {
+        res *= i;
+    }
+    return res;
+}
+
+impl Permutation {
+    /// Creates a cycle through permutations of numbers from 0 to `width-1`.
+    pub fn new(width: usize) -> Self {
+        Permutation { state: 0, width }
+    }
+}
+
+impl Iterator for Permutation {
+    type Item = Vec<usize>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.state >= factorial(self.width + 1) {
+            return None;
+        }
+        let mut pool: Vec<usize> = (0..self.width).collect();
+        let mut res: Vec<usize> = Vec::new();
+        let mut index = self.state;
+        for i in (1..self.width + 1).rev() {
+            res.push(pool.remove(index / factorial(i)));
+            index %= factorial(i);
+        }
+        self.state += 1;
+        return Some(res);
     }
 }
