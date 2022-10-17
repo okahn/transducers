@@ -14,7 +14,6 @@ pub struct DFA<T: Copy + Eq + Hash> {
     pub accept: Vec<bool>,
 }
 
-/// TODO Change accept from vector to set? Decide.
 impl<T: Copy + Eq + Hash> DFA<T> {
     /// Create a DFA with given alphabet, transition function, and accept states.
     pub fn new(alphabet: Vec<T>, transition: Vec<Vec<(T, usize)>>, accept: Vec<bool>) -> Self {
@@ -151,40 +150,4 @@ impl<T: Copy + Eq + Hash> DFA<T> {
         };
         return out;
     }
-
-    /* fn canonicalize(&self) -> Self {
-        let mut states_a = Vec::new();
-        let mut frontier = Vec::new();
-        states_a.push(0);
-        frontier.push(0);
-        while frontier.len() > 0 {
-            let mut new_frontier = Vec::new();
-            for &s1 in &frontier {
-                for &sym in &self.alphabet {
-                    let s2 = self.transition[s1][&sym];
-                    if !states_a.contains(&s2) {
-                        new_frontier.push(s2);
-                        states_a.push(s2);
-                    }
-                }
-            }
-            frontier = new_frontier;
-        }
-
-        let mut new_transition: Vec<HashMap<T, usize>> = Vec::new();
-        let mut new_accept =  Vec::new();
-        for &state in &states_a {
-            let mut nt = HashMap::new();
-            for (&l, &r) in &self.transition[state] {
-                nt.insert(l, states_a[r]);
-            }
-            new_transition.push(nt);
-            new_accept.push(self.accept[state]);
-        }
-        return DFA {
-            alphabet: self.alphabet.clone(),
-            transition: new_transition,
-            accept: new_accept
-        };
-    } */
 }

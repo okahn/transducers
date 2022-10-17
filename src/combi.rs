@@ -1,4 +1,5 @@
 use num::Integer;
+use num::Unsigned;
 
 // TODO Rename this module.
 
@@ -12,15 +13,14 @@ pub trait Cycle<T: Clone>: Iterator<Item = T> {
 }
 
 /// An iterator cycling through integers modulo `max`.
-pub struct UCycle<T: Integer + Copy> {
-    // TODO decide: limit to unsigned types?
+pub struct UCycle<T: Unsigned + Integer + Copy> {
     max: T,
     state: T,
     limit: bool,
     done: bool,
 }
 
-impl<T: Integer + Copy> Cycle<T> for UCycle<T> {
+impl<T: Unsigned + Integer + Copy> Cycle<T> for UCycle<T> {
     fn new(max: T, limit: bool) -> Self {
         UCycle {
             max,
@@ -31,7 +31,7 @@ impl<T: Integer + Copy> Cycle<T> for UCycle<T> {
     }
 }
 
-impl<T: Integer + Copy> Iterator for UCycle<T> {
+impl<T: Unsigned + Integer + Copy> Iterator for UCycle<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<T> {

@@ -1,8 +1,8 @@
-use super::cycles::Cycle;
-use super::cycles::Permutation;
-use super::cycles::TCycle;
-use super::cycles::UCycle;
-use super::cycles::VCycle;
+use super::combi::Cycle;
+use super::combi::Permutation;
+use super::combi::TCycle;
+use super::combi::UCycle;
+use super::combi::VCycle;
 use super::dfa::DFA;
 use core::hash::Hash;
 use graphviz_rust::dot_generator::*;
@@ -88,7 +88,6 @@ impl Transducer {
             accept,
         }
         .minimize();
-        //println!("{:?}", dfa);
         let mut sink = 0;
         for (s, &v) in dfa.accept.iter().enumerate() {
             if v {
@@ -117,7 +116,6 @@ impl Transducer {
             new_flip.push(flip as u8);
             new_transition.push(tn);
         }
-        //println!("{:?}, {:?}", self, dfa);
         return Transducer {
             transition: new_transition,
             flip: new_flip,
@@ -371,7 +369,6 @@ pub fn classify_transducers(size: usize, depth: usize) -> Vec<FxHashSet<Transduc
             .map(|x| distinguish(x, i))
             .collect::<Vec<_>>()
             .concat();
-        println!("{} {}", i, classes.len());
     }
     return classes;
 }
