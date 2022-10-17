@@ -1,8 +1,9 @@
 use num::Integer;
 use num::Unsigned;
+use std::fmt::Debug;
 
 /// An iterator representing a cycle.
-pub trait Cycle<T: Clone>: Iterator<Item = T> {
+pub trait Cycle<T: Clone + Debug>: Iterator<Item = T> + Debug {
     /// Creates a cycle.
     ///
     /// `max` represents the kind of structure to be cycled through.
@@ -11,6 +12,7 @@ pub trait Cycle<T: Clone>: Iterator<Item = T> {
 }
 
 /// An iterator cycling through integers modulo `max`.
+#[derive(Debug)]
 pub struct UCycle<T: Unsigned + Integer + Copy> {
     max: T,
     state: T,
@@ -18,7 +20,7 @@ pub struct UCycle<T: Unsigned + Integer + Copy> {
     done: bool,
 }
 
-impl<T: Unsigned + Integer + Copy> Cycle<T> for UCycle<T> {
+impl<T: Unsigned + Integer + Copy + Debug> Cycle<T> for UCycle<T> {
     fn new(max: T, limit: bool) -> Self {
         UCycle {
             max,
@@ -48,7 +50,8 @@ impl<T: Unsigned + Integer + Copy> Iterator for UCycle<T> {
 
 /// An iterator cycling through the chained Cartesian product of identically-typed cycles,
 /// represented as a vector.
-pub struct VCycle<U: Clone, T: Cycle<U>> {
+#[derive(Debug)]
+pub struct VCycle<U: Clone + Debug, T: Cycle<U>> {
     max: Vec<U>,
     state: Vec<T>,
     prev: Vec<U>,
@@ -56,7 +59,7 @@ pub struct VCycle<U: Clone, T: Cycle<U>> {
     done: bool,
 }
 
-impl<U: Clone, T: Cycle<U>> Cycle<Vec<U>> for VCycle<U, T> {
+impl<U: Clone + Debug, T: Cycle<U>> Cycle<Vec<U>> for VCycle<U, T> {
     fn new(max: Vec<U>, limit: bool) -> Self {
         let mut state: Vec<T> = max.iter().map(|x| T::new(x.clone(), true)).collect();
         let mut prev: Vec<U> = Vec::new();
@@ -73,7 +76,7 @@ impl<U: Clone, T: Cycle<U>> Cycle<Vec<U>> for VCycle<U, T> {
     }
 }
 
-impl<U: Clone, T: Cycle<U>> Iterator for VCycle<U, T> {
+impl<U: Clone + Debug, T: Cycle<U>> Iterator for VCycle<U, T> {
     type Item = Vec<U>;
 
     fn next(&mut self) -> Option<Vec<U>> {
@@ -103,7 +106,8 @@ impl<U: Clone, T: Cycle<U>> Iterator for VCycle<U, T> {
 
 /// An iterator cycling through the Cartesian product of two cycles,
 /// represented as a tuple.
-pub struct TCycle<U: Clone, V: Clone, S: Cycle<U>, T: Cycle<V>> {
+#[derive(Debug)]
+pub struct TCycle<U: Clone + Debug, V: Clone + Debug, S: Cycle<U>, T: Cycle<V>> {
     max: (U, V),
     state: (S, T),
     prev: (U, V),
@@ -111,7 +115,9 @@ pub struct TCycle<U: Clone, V: Clone, S: Cycle<U>, T: Cycle<V>> {
     done: bool,
 }
 
-impl<U: Clone, V: Clone, S: Cycle<U>, T: Cycle<V>> Cycle<(U, V)> for TCycle<U, V, S, T> {
+impl<U: Clone + Debug, V: Clone + Debug, S: Cycle<U>, T: Cycle<V>> Cycle<(U, V)>
+    for TCycle<U, V, S, T>
+{
     fn new(max: (U, V), limit: bool) -> Self {
         let mut state: (S, T) = (S::new(max.0.clone(), true), T::new(max.1.clone(), true));
         let prev: (U, V) = (
@@ -128,7 +134,7 @@ impl<U: Clone, V: Clone, S: Cycle<U>, T: Cycle<V>> Cycle<(U, V)> for TCycle<U, V
     }
 }
 
-impl<U: Clone, V: Clone, S: Cycle<U>, T: Cycle<V>> Iterator for TCycle<U, V, S, T> {
+impl<U: Clone + Debug, V: Clone + Debug, S: Cycle<U>, T: Cycle<V>> Iterator for TCycle<U, V, S, T> {
     type Item = (U, V);
 
     fn next(&mut self) -> Option<(U, V)> {
@@ -165,6 +171,7 @@ impl<U: Clone, V: Clone, S: Cycle<U>, T: Cycle<V>> Iterator for TCycle<U, V, S, 
 
 /// An iterator through all permutations of the numbers from 0 to `width-1` in
 /// shortlex order.
+#[derive(Debug)]
 pub struct Permutation {
     state: usize,
     width: usize,
