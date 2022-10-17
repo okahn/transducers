@@ -1,8 +1,6 @@
 use num::Integer;
 use num::Unsigned;
 
-// TODO Rename this module.
-
 /// An iterator representing a cycle.
 pub trait Cycle<T: Clone>: Iterator<Item = T> {
     /// Creates a cycle.
