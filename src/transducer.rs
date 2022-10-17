@@ -3,197 +3,13 @@ use super::cycles::Permutation;
 use super::cycles::TCycle;
 use super::cycles::UCycle;
 use super::cycles::VCycle;
+use super::dfa::DFA;
 use core::hash::Hash;
 use graphviz_rust::dot_generator::*;
 use graphviz_rust::dot_structures::*;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
-
-// TODO move DFA stuff to another file.
-
-/// A DFA, or deterministic finite automaton.
-#[derive(Debug, PartialEq, Eq)]
-pub struct DFA<T: Copy + Eq + Hash> {
-    alphabet: Vec<T>,
-    transition: Vec<FxHashMap<T, usize>>,
-    accept: Vec<bool>,
-}
-
-/// TODO Change accept from vector to set? Decide.
-impl<T: Copy + Eq + Hash> DFA<T> {
-    /// Create a DFA with given alphabet, transition function, and accept states.
-    pub fn new(alphabet: Vec<T>, transition: Vec<Vec<(T, usize)>>, accept: Vec<bool>) -> Self {
-        let transition = transition
-            .iter()
-            .map(|x| x.into_iter().map(|&x| x.clone()).collect())
-            .collect();
-        DFA {
-            alphabet,
-            transition,
-            accept,
-        }
-    }
-
-    fn prune(&self) -> Self {
-        let mut marked: Vec<usize> = vec![0];
-        let mut frontier: Vec<usize> = vec![0];
-        while frontier.len() > 0 {
-            let mut new_frontier = Vec::new();
-            for &s1 in &frontier {
-                for (_, &s2) in &self.transition[s1] {
-                    if !marked.contains(&s2) {
-                        marked.push(s2);
-                        new_frontier.push(s2);
-                    }
-                }
-            }
-            frontier = new_frontier;
-        }
-        let mut states_a = FxHashMap::default();
-        let mut c = 0;
-        for state in 0..self.transition.len() {
-            if marked.contains(&state) {
-                states_a.insert(state, c);
-                c += 1;
-            }
-        }
-        let mut new_transition: Vec<FxHashMap<T, usize>> = Vec::new();
-        let mut new_accept = Vec::new();
-        for state in 0..self.transition.len() {
-            if states_a.contains_key(&state) {
-                let mut nt = FxHashMap::default();
-                for (&l, &r) in &self.transition[state] {
-                    nt.insert(l, states_a[&r]);
-                }
-                new_transition.push(nt);
-                new_accept.push(self.accept[state]);
-            }
-        }
-        return DFA {
-            alphabet: self.alphabet.clone(),
-            transition: new_transition,
-            accept: new_accept,
-        };
-    }
-
-    /// Returns the minimal equivalent DFA.
-    ///
-    /// At least O(n^2) time in the number of states.
-    /// Does not canonicalize the resulting DFA: to check equality you must also find an isomorphism.
-    pub fn minimize(&self) -> Self {
-        let _s = self.prune();
-        let mut marked = Vec::new();
-        let mut unmarked = Vec::new();
-        for i in 0.._s.transition.len() {
-            for j in i + 1.._s.transition.len() {
-                if _s.accept[i] == _s.accept[j] {
-                    unmarked.push((i, j));
-                } else {
-                    marked.push((i, j));
-                }
-            }
-        }
-        loop {
-            let mut new_unmarked = Vec::new();
-            for (i, j) in unmarked.clone() {
-                let mut found = false;
-                for sym in _s.transition[i].keys() {
-                    let a = _s.transition[i][sym];
-                    let b = _s.transition[j][sym];
-                    if marked.contains(&(a, b)) || marked.contains(&(b, a)) {
-                        marked.push((i, j));
-                        found = true;
-                        break;
-                    }
-                }
-                if !found {
-                    new_unmarked.push((i, j))
-                }
-            }
-            if unmarked == new_unmarked {
-                break;
-            } else {
-                unmarked = new_unmarked;
-            }
-        }
-        let mut states_a: FxHashMap<usize, usize> = FxHashMap::default();
-        for (i, j) in unmarked {
-            if !states_a.contains_key(&j) {
-                states_a.insert(j, i);
-            } else if states_a[&j] > i {
-                states_a.insert(j, i);
-            }
-        }
-        let mut states_b: FxHashMap<usize, usize> = FxHashMap::default();
-        let mut c = 0;
-        for state in 0.._s.transition.len() {
-            if !states_a.contains_key(&state) {
-                states_a.insert(state, state);
-                states_b.insert(state, c);
-                c += 1;
-            }
-        }
-        let mut states_c: FxHashMap<usize, usize> = FxHashMap::default();
-        for state in 0.._s.transition.len() {
-            states_c.insert(state, states_b[&states_a[&state]]);
-        }
-        let mut new_transition: Vec<FxHashMap<T, usize>> = Vec::new();
-        let mut new_accept = Vec::new();
-        for state in 0.._s.transition.len() {
-            if states_b.contains_key(&state) {
-                let mut nt = FxHashMap::default();
-                for (&l, &r) in &_s.transition[state] {
-                    nt.insert(l, states_b[&states_a[&r]]);
-                }
-                new_transition.push(nt);
-                new_accept.push(_s.accept[state]);
-            }
-        }
-        let out = DFA {
-            alphabet: _s.alphabet.clone(),
-            transition: new_transition,
-            accept: new_accept,
-        };
-        return out;
-    }
-
-    /* fn canonicalize(&self) -> Self {
-        let mut states_a = Vec::new();
-        let mut frontier = Vec::new();
-        states_a.push(0);
-        frontier.push(0);
-        while frontier.len() > 0 {
-            let mut new_frontier = Vec::new();
-            for &s1 in &frontier {
-                for &sym in &self.alphabet {
-                    let s2 = self.transition[s1][&sym];
-                    if !states_a.contains(&s2) {
-                        new_frontier.push(s2);
-                        states_a.push(s2);
-                    }
-                }
-            }
-            frontier = new_frontier;
-        }
-
-        let mut new_transition: Vec<HashMap<T, usize>> = Vec::new();
-        let mut new_accept =  Vec::new();
-        for &state in &states_a {
-            let mut nt = HashMap::new();
-            for (&l, &r) in &self.transition[state] {
-                nt.insert(l, states_a[r]);
-            }
-            new_transition.push(nt);
-            new_accept.push(self.accept[state]);
-        }
-        return DFA {
-            alphabet: self.alphabet.clone(),
-            transition: new_transition,
-            accept: new_accept
-        };
-    } */
-}
 
 /// A transducer. By convention, state `0` is the start state.
 ///
@@ -206,17 +22,7 @@ pub struct Transducer {
 }
 
 impl Transducer {
-    fn step(&self, x: &[u8]) -> Vec<u8> {
-        let mut state: usize = 0;
-        let mut out: Vec<u8> = vec![0; x.len()];
-        for (i, &c) in x.iter().enumerate() {
-            out[i] = c ^ self.flip[state];
-            state = self.transition[state][c as usize];
-        }
-        return out;
-    }
-
-    fn mut_step(&self, x: &mut Vec<u8>) {
+    fn step(&self, x: &mut Vec<u8>) {
         let mut state: usize = 0;
         for i in 0..x.len() {
             let c = x[i];
@@ -228,7 +34,7 @@ impl Transducer {
     fn min_word(&self, word: &[u8]) -> Vec<u8> {
         let mut min = word.to_vec();
         let mut next = word.to_vec();
-        self.mut_step(&mut next);
+        self.step(&mut next);
         loop {
             if next < min {
                 min = next.clone();
@@ -236,7 +42,7 @@ impl Transducer {
             if next == word {
                 return min;
             }
-            self.mut_step(&mut next);
+            self.step(&mut next);
         }
     }
 
@@ -318,15 +124,28 @@ impl Transducer {
         };
     }
 
-    // TODO Check that this is actually a permutation before proceeding?
-    // If not, guarantee that the merging of states is well-defined somehow.
-
     /// Given a permutation of its states, create the corresponding
     ///  graph-isomorphic transducer.
     ///
     /// Warning: since `0` is the start state by convention, only permutations
     /// mapping `0` to itself are guaranteed to behave identically.
     pub fn relabel(&self, map: FxHashMap<usize, usize>) -> Self {
+        // Validity check for the relabeling.
+        for i in 0..map.len() {
+            if !map.contains_key(&i) {
+                panic!("map {:?} is not a function.", map);
+            }
+            for j in i..map.len() {
+                if map[&i] == map[&j] {
+                    for (a, b) in self.transition[i].iter().zip(self.transition[j].iter()) {
+                        if map[&a] != map[&b] {
+                            panic!("map {:?} is not a valid endomorphism.", map);
+                        }
+                    }
+                }
+            }
+        }
+
         let mut new_transition: Vec<Vec<usize>> = vec![Vec::new(); self.transition.len()];
         let mut new_flip = vec![0; self.transition.len()];
         for state in 0..self.transition.len() {
@@ -341,11 +160,9 @@ impl Transducer {
         };
     }
 
-    // TODO Rename `reverse` to `invert` or `inverse`.
-
     /// Produce the inverse transducer, that is, one that undoes the operation
     /// of the given transducer.
-    pub fn reverse(&self) -> Self {
+    pub fn inverse(&self) -> Self {
         let mut new_transition: Vec<Vec<usize>> = Vec::new();
         for state in 0..self.transition.len() {
             if self.flip[state] != 0 {
@@ -373,7 +190,7 @@ impl Transducer {
                 map.insert(i + 1, j + 1);
             }
             let cand1 = self.relabel(map);
-            let cand2 = cand1.reverse();
+            let cand2 = cand1.inverse();
             if cand1 < min {
                 min = cand1;
             }

@@ -8,8 +8,11 @@
 /// Iterator representations of products and permutations.
 pub mod cycles;
 
+/// Representations of DFAs.
+pub mod dfa;
+
 /// Representations of transducers and DFAs.
-pub mod transducers;
+pub mod transducer;
 
 /* use graphviz_rust::cmd::{CommandArg, Format};
 use graphviz_rust::exec;
@@ -21,7 +24,7 @@ use std::env;
 
 use rustc_hash::FxHashMap;
 
-use crate::transducers::classify_transducers;
+use transducer::classify_transducers;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
