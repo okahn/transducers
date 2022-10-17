@@ -6,7 +6,9 @@ use super::cycles::VCycle;
 use core::hash::Hash;
 use graphviz_rust::dot_generator::*;
 use graphviz_rust::dot_structures::*;
-use std::collections::HashMap;
+use rayon::prelude::*;
+use rustc_hash::FxHashMap;
+use rustc_hash::FxHashSet;
 
 // TODO move DFA stuff to another file.
 
@@ -14,7 +16,7 @@ use std::collections::HashMap;
 #[derive(Debug, PartialEq, Eq)]
 pub struct DFA<T: Copy + Eq + Hash> {
     alphabet: Vec<T>,
-    transition: Vec<HashMap<T, usize>>,
+    transition: Vec<FxHashMap<T, usize>>,
     accept: Vec<bool>,
 }
 
@@ -48,7 +50,7 @@ impl<T: Copy + Eq + Hash> DFA<T> {
             }
             frontier = new_frontier;
         }
-        let mut states_a = HashMap::new();
+        let mut states_a = FxHashMap::default();
         let mut c = 0;
         for state in 0..self.transition.len() {
             if marked.contains(&state) {
@@ -56,11 +58,11 @@ impl<T: Copy + Eq + Hash> DFA<T> {
                 c += 1;
             }
         }
-        let mut new_transition: Vec<HashMap<T, usize>> = Vec::new();
+        let mut new_transition: Vec<FxHashMap<T, usize>> = Vec::new();
         let mut new_accept = Vec::new();
         for state in 0..self.transition.len() {
             if states_a.contains_key(&state) {
-                let mut nt = HashMap::new();
+                let mut nt = FxHashMap::default();
                 for (&l, &r) in &self.transition[state] {
                     nt.insert(l, states_a[&r]);
                 }
@@ -115,7 +117,7 @@ impl<T: Copy + Eq + Hash> DFA<T> {
                 unmarked = new_unmarked;
             }
         }
-        let mut states_a: HashMap<usize, usize> = HashMap::new();
+        let mut states_a: FxHashMap<usize, usize> = FxHashMap::default();
         for (i, j) in unmarked {
             if !states_a.contains_key(&j) {
                 states_a.insert(j, i);
@@ -123,7 +125,7 @@ impl<T: Copy + Eq + Hash> DFA<T> {
                 states_a.insert(j, i);
             }
         }
-        let mut states_b: HashMap<usize, usize> = HashMap::new();
+        let mut states_b: FxHashMap<usize, usize> = FxHashMap::default();
         let mut c = 0;
         for state in 0.._s.transition.len() {
             if !states_a.contains_key(&state) {
@@ -132,15 +134,15 @@ impl<T: Copy + Eq + Hash> DFA<T> {
                 c += 1;
             }
         }
-        let mut states_c: HashMap<usize, usize> = HashMap::new();
+        let mut states_c: FxHashMap<usize, usize> = FxHashMap::default();
         for state in 0.._s.transition.len() {
             states_c.insert(state, states_b[&states_a[&state]]);
         }
-        let mut new_transition: Vec<HashMap<T, usize>> = Vec::new();
+        let mut new_transition: Vec<FxHashMap<T, usize>> = Vec::new();
         let mut new_accept = Vec::new();
         for state in 0.._s.transition.len() {
             if states_b.contains_key(&state) {
-                let mut nt = HashMap::new();
+                let mut nt = FxHashMap::default();
                 for (&l, &r) in &_s.transition[state] {
                     nt.insert(l, states_b[&states_a[&r]]);
                 }
@@ -206,17 +208,27 @@ pub struct Transducer {
 impl Transducer {
     fn step(&self, x: &[u8]) -> Vec<u8> {
         let mut state: usize = 0;
-        let mut out: Vec<u8> = Vec::new();
-        for &c in x {
-            out.push(c ^ self.flip[state]);
+        let mut out: Vec<u8> = vec![0; x.len()];
+        for (i, &c) in x.iter().enumerate() {
+            out[i] = c ^ self.flip[state];
             state = self.transition[state][c as usize];
         }
         return out;
     }
 
+    fn mut_step(&self, x: &mut Vec<u8>) {
+        let mut state: usize = 0;
+        for i in 0..x.len() {
+            let c = x[i];
+            x[i] = c ^ self.flip[state];
+            state = self.transition[state][c as usize];
+        }
+    }
+
     fn min_word(&self, word: &[u8]) -> Vec<u8> {
         let mut min = word.to_vec();
-        let mut next = self.step(&word);
+        let mut next = word.to_vec();
+        self.mut_step(&mut next);
         loop {
             if next < min {
                 min = next.clone();
@@ -224,7 +236,7 @@ impl Transducer {
             if next == word {
                 return min;
             }
-            next = self.step(&next);
+            self.mut_step(&mut next);
         }
     }
 
@@ -232,12 +244,10 @@ impl Transducer {
     ///
     /// At least O(2^n) time where n is `depth`, but memory-efficient.
     pub fn orbit_compare(&self, other: &Transducer, depth: usize) -> bool {
-        for word in VCycle::<u8, UCycle<u8>>::new(vec![2; depth], true) {
-            if self.min_word(&word) != other.min_word(&word) {
-                return false;
-            }
-        }
-        return true;
+        let xs = VCycle::<u8, UCycle<u8>>::new(vec![2; depth], true);
+        return xs
+            .par_bridge()
+            .all(|word| self.min_word(&word) == other.min_word(&word));
     }
 
     /// Minimize a given transducer.
@@ -251,7 +261,7 @@ impl Transducer {
         accept.push(true);
         let mut transition = Vec::new();
         for s1 in 0..self.transition.len() {
-            let mut nt = HashMap::new();
+            let mut nt = FxHashMap::default();
             for a in 0..2 {
                 let s2 = self.transition[s1][a as usize];
                 let b = (a + self.flip[s1]) % 2;
@@ -261,7 +271,7 @@ impl Transducer {
             }
             transition.push(nt);
         }
-        let mut nt = HashMap::new();
+        let mut nt = FxHashMap::default();
         for &c in &alphabet {
             nt.insert(c, self.transition.len());
         }
@@ -316,7 +326,7 @@ impl Transducer {
     ///
     /// Warning: since `0` is the start state by convention, only permutations
     /// mapping `0` to itself are guaranteed to behave identically.
-    pub fn relabel(&self, map: HashMap<usize, usize>) -> Self {
+    pub fn relabel(&self, map: FxHashMap<usize, usize>) -> Self {
         let mut new_transition: Vec<Vec<usize>> = vec![Vec::new(); self.transition.len()];
         let mut new_flip = vec![0; self.transition.len()];
         for state in 0..self.transition.len() {
@@ -357,7 +367,7 @@ impl Transducer {
     pub fn canonicalize(&self) -> Self {
         let mut min = self.clone();
         for m in Permutation::new(self.transition.len() - 1) {
-            let mut map = HashMap::new();
+            let mut map = FxHashMap::default();
             map.insert(0, 0);
             for (i, j) in m.iter().enumerate() {
                 map.insert(i + 1, j + 1);
@@ -506,4 +516,45 @@ impl Iterator for AllTransducers {
             }),
         }
     }
+}
+
+fn distinguish(class: &FxHashSet<Transducer>, depth: usize) -> Vec<FxHashSet<Transducer>> {
+    let mut res: Vec<FxHashSet<Transducer>> = Vec::new();
+    let mut remainder: Vec<_> = class.into_iter().collect();
+    loop {
+        if remainder.len() == 0 {
+            break;
+        }
+        let cand = remainder.pop().unwrap();
+        let (mut l, r): (Vec<_>, Vec<_>) = remainder
+            .into_par_iter()
+            .partition(|x| cand.orbit_compare(x, depth));
+        l.push(cand);
+        res.push(l.into_iter().map(|x| x.clone()).collect());
+        remainder = r;
+    }
+    return res;
+}
+
+/// Divide transducers of a given size into *-equal classes.
+pub fn classify_transducers(size: usize, depth: usize) -> Vec<FxHashSet<Transducer>> {
+    let mut classes = Vec::new();
+    let mut initial = FxHashSet::default();
+    for m in AllTransducers::new(size).map(|x| x.minimize().canonicalize()) {
+        if initial.contains(&m) {
+            continue;
+        } else {
+            initial.insert(m.clone());
+        }
+    }
+    classes.push(initial);
+    for i in 1..depth + 1 {
+        classes = classes
+            .par_iter()
+            .map(|x| distinguish(x, i))
+            .collect::<Vec<_>>()
+            .concat();
+        println!("{} {}", i, classes.len());
+    }
+    return classes;
 }

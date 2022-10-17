@@ -3,6 +3,9 @@
 *.gv
 *.gv.png
 
-# Added by cargo
+.DS_Store
 
+/debug
+/images
 /target
+/.vscode

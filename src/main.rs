@@ -11,36 +11,42 @@ pub mod cycles;
 /// Representations of transducers and DFAs.
 pub mod transducers;
 
-use graphviz_rust::cmd::{CommandArg, Format};
+/* use graphviz_rust::cmd::{CommandArg, Format};
 use graphviz_rust::exec;
-use graphviz_rust::printer::PrinterContext;
-use std::collections::HashSet;
-use transducers::AllTransducers;
-use transducers::Transducer;
+use graphviz_rust::printer::PrinterContext; */
+// use std::collections::HashSet;
+use std::env;
+// use transducers::AllTransducers;
+// use transducers::Transducer;
+
+use rustc_hash::FxHashMap;
+
+use crate::transducers::classify_transducers;
 
 fn main() {
-    /* let x = Permutation { state: 0, width: 4 };
-    for a in x {
-        println!("{:?}", a);
+    let args: Vec<String> = env::args().collect();
+    let size = args[1].parse::<usize>().unwrap();
+    let depth = args[2].parse::<usize>().unwrap();
+    let res = classify_transducers(size, depth);
+    let mut cs: FxHashMap<usize, u64> = FxHashMap::default();
+    for i in res.iter().map(|x| x.len()) {
+        if cs.contains_key(&i) {
+            cs.insert(i, cs[&i] + 1);
+        } else {
+            cs.insert(i, 1);
+        }
     }
-    let a = DFA::new(
-        vec!['a', 'b'],
-        vec![
-            vec![('a', 2), ('b', 1)],
-            vec![('a', 0), ('b', 0)],
-            vec![('a', 0), ('b', 0)]
-            ],
-        vec![true, false, true]);
-    println!("{:?}\n{:?}", a, a.minimize());
-    */
-
+    let mut cs2: Vec<_> = cs.into_iter().collect();
+    cs2.sort();
+    println!("{} {:?}", res.len(), cs2);
+    /*
     let n_states = 3;
     let depth = 10;
     let mut classes: Vec<Vec<Transducer>> = Vec::new();
     let mut seen: HashSet<Transducer> = HashSet::new();
 
-    let mut ctx = PrinterContext::default();
-    ctx.always_inline();
+    // let mut ctx = PrinterContext::default();
+    // ctx.always_inline();
     for (i, m) in AllTransducers::new(n_states)
         .map(|x| x.minimize().canonicalize())
         .enumerate()
@@ -58,40 +64,22 @@ fn main() {
                 break;
             }
         }
-        /* let graph_png = exec(
-            m.graph(),
-            &mut PrinterContext::default(),
-            vec![CommandArg::Format(Format::Png)],
-        )
-        .unwrap(); */
 
-        /* let pathstr = format!("images/{}.png", i);
-        let path = Path::new(&pathstr);
-        let display = path.display();
-        let mut file = match File::create(&path) {
-            Err(why) => panic!("couldn't create {}: {}", display, why),
-            Ok(file) => file,
-        };
-        match file.write_all(graph_png.as_bytes()) {
-            Err(why) => panic!("couldn't write to {}: {}", display, why),
-            Ok(_) => println!("successfully wrote to {}", display),
-        } */
-
-        let ci;
+        // let ci;
         match found {
             Some(c) => {
                 classes[c].push(m.clone());
-                ci = c;
+                // ci = c;
             }
             None => {
-                ci = classes.len();
+                // ci = classes.len();
                 classes.push(vec![m.clone()]);
             }
         }
 
         println!("{} {:?}", i + 1, m);
 
-        let g1 = m.graph();
+        /* let g1 = m.graph();
         exec(
             g1,
             &mut ctx,
@@ -101,7 +89,7 @@ fn main() {
                 CommandArg::Output(format!("images/m_{}_{}_{}.png", n_states, ci, i).to_string()),
             ],
         )
-        .unwrap();
+        .unwrap(); */
     }
     println!(
         "{} {:?}",
@@ -113,6 +101,7 @@ fn main() {
         if class.len() > 1 {
             println!("{} {}", i, class.len());
 
+            /*
             let g2 = class[0].orbit_tree(depth);
             exec(
                 g2,
@@ -124,6 +113,8 @@ fn main() {
                 ],
             )
             .unwrap();
+            */
         }
     }
+    */
 }
