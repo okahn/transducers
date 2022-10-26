@@ -21,6 +21,13 @@ pub struct Transducer {
     flip: Vec<u8>,
 }
 
+fn repr(word: &[u8]) -> String {
+    word.iter()
+        .map(|&x| x.to_string())
+        .collect::<Vec<_>>()
+        .join("")
+}
+
 impl Transducer {
     fn step(&self, x: &mut Vec<u8>) {
         let mut state: usize = 0;
@@ -251,7 +258,7 @@ impl Transducer {
     /// given `depth`.
     pub fn orbit_tree(&self, depth: usize) -> Graph {
         let mut res = graph!(strict di id!();
-          node!("\"\""; attr!("label", "\u{03b5}"), attr!("shape", "circle")));
+          node!(esc ""; attr!("label", "\u{03b5}"), attr!("shape", "circle")));
         let mut words = vec![Vec::new()];
         for _ in 0..depth {
             let mut new_words = vec![];
@@ -260,27 +267,9 @@ impl Transducer {
                 let mut r = word.clone();
                 l.push(0);
                 r.push(1);
-                let wlabel = format!(
-                    "\"{}\"",
-                    word.iter()
-                        .map(|&x| x.to_string())
-                        .collect::<Vec<_>>()
-                        .join("")
-                );
-                let l_label = format!(
-                    "\"{}\"",
-                    l.iter()
-                        .map(|&x| x.to_string())
-                        .collect::<Vec<_>>()
-                        .join("")
-                );
-                let r_label = format!(
-                    "\"{}\"",
-                    r.iter()
-                        .map(|&x| x.to_string())
-                        .collect::<Vec<_>>()
-                        .join("")
-                );
+                let wlabel = repr(&word);
+                let l_label = repr(&l);
+                let r_label = repr(&r);
                 new_words.push(l.clone());
                 res.add_stmt(stmt!(node!(l_label; attr!("shape", "circle"))));
                 res.add_stmt(stmt!(edge!(node_id!(wlabel) => node_id!(l_label))));
