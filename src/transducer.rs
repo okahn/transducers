@@ -5,8 +5,12 @@ use super::combi::UCycle;
 use super::combi::VCycle;
 use super::dfa::DFA;
 use core::hash::Hash;
+use graphviz_rust::cmd::CommandArg;
+use graphviz_rust::cmd::Format;
 use graphviz_rust::dot_generator::*;
 use graphviz_rust::dot_structures::*;
+use graphviz_rust::exec;
+use graphviz_rust::printer::PrinterContext;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
@@ -271,17 +275,37 @@ impl Transducer {
                 let l_label = repr(&l);
                 let r_label = repr(&r);
                 new_words.push(l.clone());
-                res.add_stmt(stmt!(node!(l_label; attr!("shape", "circle"))));
-                res.add_stmt(stmt!(edge!(node_id!(wlabel) => node_id!(l_label))));
+                res.add_stmt(stmt!(node!(esc l_label; attr!("shape", "circle"))));
+                res.add_stmt(stmt!(edge!(node_id!(esc wlabel) => node_id!(esc l_label))));
                 if self.min_word(&r) != l {
                     new_words.push(r.clone());
-                    res.add_stmt(stmt!(node!(r_label; attr!("shape", "circle"))));
-                    res.add_stmt(stmt!(edge!(node_id!(wlabel) => node_id!(r_label))));
+                    res.add_stmt(stmt!(node!(esc r_label; attr!("shape", "circle"))));
+                    res.add_stmt(stmt!(edge!(node_id!(esc wlabel) => node_id!(esc r_label))));
                 }
             }
             words = new_words;
         }
         return res;
+    }
+
+    fn residues(&self) -> Vec<Self> {
+        let mut remap_l = FxHashMap::default();
+        let mut remap_r = FxHashMap::default();
+        for i in 0..self.transition.len() {
+            remap_l.insert(i, i);
+            remap_r.insert(i, i);
+        }
+        remap_l.insert(0, self.transition[0][0]);
+        remap_r.insert(0, self.transition[0][1]);
+        remap_l.insert(self.transition[0][0], 0);
+        remap_r.insert(self.transition[0][1], 0);
+        let l = self.relabel(remap_l);
+        let r = self.relabel(remap_r);
+        if self.flip[0] == 0 {
+            return vec![l.minimize(), r.minimize()];
+        } else {
+            return vec![l.product(&r).minimize(), r.product(&l).minimize()];
+        }
     }
 }
 
@@ -340,16 +364,89 @@ fn distinguish(class: &FxHashSet<Transducer>, depth: usize) -> Vec<FxHashSet<Tra
     return res;
 }
 
+/// Determine whether a transducer's orbit is the maximal cycle.
+fn maximal(m: &Transducer) -> bool {
+    let mut trace: Vec<u8> = vec![0; m.transition.len()];
+    let mut seen: FxHashSet<Vec<u8>> = FxHashSet::default();
+    trace[0] = 1;
+    loop {
+        if trace
+            .iter()
+            .zip(m.flip.iter())
+            .map(|(a, b)| a * b)
+            .fold(0, |a, b| a + b)
+            % 2
+            == 0
+        {
+            return false;
+        }
+        if seen.contains(&trace) {
+            return true;
+        }
+        let mut next = vec![0; m.transition.len()];
+        for i in 0..m.transition.len() {
+            for j in 0..2 {
+                next[m.transition[i][j]] += 1 * trace[i];
+                next[m.transition[i][j]] %= 2;
+            }
+        }
+        seen.insert(trace.clone());
+        trace = next;
+    }
+}
+
+fn finitely_branching(m: &Transducer, depth: usize) -> bool {
+    if depth == 0 {
+        return maximal(m);
+    } else {
+        return maximal(m)
+            || m.residues()
+                .iter()
+                .all(|m| finitely_branching(m, depth - 1));
+    }
+}
+
+fn self_branching(m: &Transducer, depth: usize) -> bool {
+    let residues = m.residues();
+    let (l, r) = (residues[0].clone(), residues[1].clone());
+    return (l.transition.len() == m.transition.len()
+        && l.canonicalize() == m.canonicalize()
+        && finitely_branching(&r, depth - 1))
+        || (r.transition.len() == m.transition.len()
+            && r.canonicalize() == m.canonicalize()
+            && finitely_branching(&l, depth - 1));
+}
+
 /// Divide transducers of a given size into *-equal classes.
 pub fn classify_transducers(size: usize, depth: usize) -> Vec<FxHashSet<Transducer>> {
+    let mut pre_classes = Vec::new();
     let mut classes = Vec::new();
     let mut initial = FxHashSet::default();
-    for m in AllTransducers::new(size).map(|x| x.minimize().canonicalize()) {
+    let mut key = FxHashMap::default();
+    let mut seen = 0;
+    for (i, m) in AllTransducers::new(size)
+        .map(|x| x.minimize().canonicalize())
+        .enumerate()
+    {
+        if i - seen > 100 {
+            seen = i;
+            print!("{}\r", i);
+        }
         if initial.contains(&m) {
             continue;
         } else {
             initial.insert(m.clone());
+            key.insert(m, i);
         }
+    }
+    let preds = vec![maximal];
+    for (i, pred) in preds.iter().enumerate() {
+        let (l, r): (Vec<_>, Vec<_>) = initial.into_par_iter().partition(pred);
+        if l.len() > 0 {
+            println!("{} {}", i, l.len());
+            pre_classes.push(l.into_iter().map(|x| x.clone()).collect());
+        }
+        initial = r.into_iter().map(|x| x.clone()).collect();
     }
     classes.push(initial);
     for i in 1..depth + 1 {
@@ -359,5 +456,49 @@ pub fn classify_transducers(size: usize, depth: usize) -> Vec<FxHashSet<Transduc
             .collect::<Vec<_>>()
             .concat();
     }
+    let mut ctx = PrinterContext::default();
+    ctx.always_inline();
+    for class in &classes {
+        if class.len() > 1 {
+            let exemplar = class.iter().next().unwrap();
+            if !finitely_branching(exemplar, depth) {
+                let g = exemplar.orbit_tree(depth);
+                exec(
+                    g,
+                    &mut ctx,
+                    vec![
+                        CommandArg::Custom("-Gdpi=300".to_string()),
+                        CommandArg::Format(Format::Png),
+                        CommandArg::Output(format!("images/t_{}.png", key[exemplar]).to_string()),
+                    ],
+                )
+                .unwrap();
+                for m in class {
+                    for (i, m2) in m.residues().iter().enumerate() {
+                        let g = m2.graph();
+                        exec(
+                            g,
+                            &mut ctx,
+                            vec![
+                                CommandArg::Custom("-Gdpi=300".to_string()),
+                                CommandArg::Format(Format::Png),
+                                CommandArg::Output(
+                                    format!("images/m_{}_{}.png", key[m], i).to_string(),
+                                ),
+                            ],
+                        )
+                        .unwrap();
+                    }
+                }
+                println!(
+                    "{} unclassified at depth {}: {:?}",
+                    class.len(),
+                    depth,
+                    class.iter().map(|x| key[x]).collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+    classes.append(&mut pre_classes);
     return classes;
 }

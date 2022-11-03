@@ -46,7 +46,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let size = args[1].parse::<usize>().unwrap();
     let depth = args[2].parse::<usize>().unwrap();
-    write_orbit_trees(size, depth);
+    // write_orbit_trees(size, depth);
     let res = classify_transducers(size, depth);
     let mut cs: FxHashMap<usize, u64> = FxHashMap::default();
     for i in res.iter().map(|x| x.len()) {

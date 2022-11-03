@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use core::hash::Hash;
 use rustc_hash::FxHashMap;
 
@@ -14,7 +15,7 @@ pub struct DFA<T: Copy + Eq + Hash> {
     pub accept: Vec<bool>,
 }
 
-impl<T: Copy + Eq + Hash> DFA<T> {
+impl<T: Copy + Eq + Hash + Debug> DFA<T> {
     /// Create a DFA with given alphabet, transition function, and accept states.
     pub fn new(alphabet: Vec<T>, transition: Vec<Vec<(T, usize)>>, accept: Vec<bool>) -> Self {
         let transition = transition
